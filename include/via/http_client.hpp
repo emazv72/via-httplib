@@ -85,7 +85,7 @@ namespace via
     // Variables
 
     std::shared_ptr<connection_type> connection_; ///< the comms connection
-//    ASIO::deadline_timer timer_;             ///< a deadline timer
+    ASIO_TIMER timer_;                            ///< a deadline timer
     http::response_receiver<Container> rx_;         ///< the response receiver
     std::string host_name_;                         ///< the name of the host
     std::string port_name_;                         ///< the port name / number
@@ -200,13 +200,13 @@ namespace via
       if (period_ > 0)
       {
 #ifdef ASIO_STANDALONE
-//        timer_.expires_from_now(std::chrono::milliseconds(period_));
+        timer_.expires_from_now(std::chrono::milliseconds(period_));
 #else
         timer_.expires_from_now(boost::posix_time::milliseconds(period_));
 #endif
-//        weak_pointer weak_ptr(weak_from_this());
-//        timer_.async_wait([weak_ptr](ASIO_ERROR_CODE const& error)
-//                           { timeout_handler(weak_ptr, error); });
+        weak_pointer weak_ptr(weak_from_this());
+        timer_.async_wait([weak_ptr](ASIO_ERROR_CODE const& error)
+                           { timeout_handler(weak_ptr, error); });
       }
     }
 
@@ -236,7 +236,7 @@ namespace via
       switch(event)
       {
       case via::comms::CONNECTED:
-//        timer_.cancel();
+        timer_.cancel();
         rx_buffer_.clear();
         rx_.clear();
         if (connected_handler_)
@@ -278,7 +278,7 @@ namespace via
                          ChunkHandler    chunk_handler,
                          size_t          rx_buffer_size) :
       connection_(connection_type::create(io_service, rx_buffer_size)),
-//      timer_(io_service),
+      timer_(io_service),
       rx_(),
       host_name_(),
       tx_header_(),
@@ -554,7 +554,7 @@ namespace via
     void close()
     {
       period_ = 0;
-//      timer_.cancel();
+      timer_.cancel();
       connection_->close();
     }
 

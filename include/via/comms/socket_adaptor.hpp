@@ -20,10 +20,12 @@
   #include <asio.hpp>
   #define ASIO asio
   #define ASIO_ERROR_CODE asio::error_code
+  #define ASIO_TIMER asio::steady_timer
 #else
   #include <boost/asio.hpp>
   #define ASIO boost::asio
   #define ASIO_ERROR_CODE boost::system::error_code
+  #define ASIO_TIMER boost::asio::deadline_timer
 #endif
 #include <deque>
 #include <functional>
