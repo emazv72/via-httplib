@@ -9,15 +9,15 @@
 #include "via/http/headers.hpp"
 #include <cstdlib>
 #include <algorithm>
-#include <regex>
 
 namespace
 {
   const std::string EMPTY_STRING("");
 
-  const std::regex REGEX_IDENTITY(".*identity.*",     std::regex::icase);
-  const std::regex REGEX_CLOSE   (".*close.*",        std::regex::icase);
-  const std::regex REGEX_CONTINUE(".*100-continue.*", std::regex::icase);
+  const std::string COOKIE("cookie");
+  const std::string IDENTITY("identity");
+  const std::string CLOSE("close");
+  const std::string CONTINUE("100-continue");
 }
 
 namespace via
@@ -90,6 +90,25 @@ namespace via
     //////////////////////////////////////////////////////////////////////////
 
     //////////////////////////////////////////////////////////////////////////
+    void message_headers::add(const std::string& name, const std::string& value)
+    {
+      std::unordered_map<std::string, std::string>::iterator iter
+        (fields_.find(name));
+      // if the field name was found previously
+      if (iter != fields_.end())
+      {
+        if (name.find(COOKIE) != std::string::npos)
+          iter->second += SC + value;
+        else
+          iter->second += COMMA + value;
+      }
+      else
+        fields_.insert(std::unordered_map<std::string, std::string>::value_type
+                             (name, value));
+    }
+    //////////////////////////////////////////////////////////////////////////
+
+    //////////////////////////////////////////////////////////////////////////
     const std::string& message_headers::find(const std::string& name) const
     {
       std::unordered_map<std::string, std::string>::const_iterator iter
@@ -119,11 +138,14 @@ namespace via
     bool message_headers::is_chunked() const
     {
       // Find whether there is a transfer encoding header.
-      const std::string& xfer_encoding(find(header_field::id::TRANSFER_ENCODING));
+      std::string xfer_encoding(find(header_field::id::TRANSFER_ENCODING));
       if (xfer_encoding.empty())
         return false;
 
-      return (!std::regex_match(xfer_encoding, REGEX_IDENTITY));
+      std::transform(xfer_encoding.begin(), xfer_encoding.end(),
+                     xfer_encoding.begin(), ::tolower);
+      // Note: is transfer encoding if "identity" is NOT found.
+      return (xfer_encoding.find(IDENTITY) == std::string::npos);
     }
     //////////////////////////////////////////////////////////////////////////
 
@@ -131,11 +153,13 @@ namespace via
     bool message_headers::close_connection() const
     {
       // Find whether there is a connection header.
-      const std::string& connection(find(header_field::id::CONNECTION));
+      std::string connection(find(header_field::id::CONNECTION));
       if (connection.empty())
         return false;
 
-      return (std::regex_match(connection, REGEX_CLOSE));
+      std::transform(connection.begin(), connection.end(),
+                     connection.begin(), ::tolower);
+      return (connection.find(CLOSE) != std::string::npos);
     }
     //////////////////////////////////////////////////////////////////////////
 
@@ -143,11 +167,13 @@ namespace via
     bool message_headers::expect_continue() const
     {
       // Find whether there is a expect header.
-      const std::string& connection(find(header_field::id::EXPECT));
-      if (connection.empty())
+      std::string expect(find(header_field::id::EXPECT));
+      if (expect.empty())
         return false;
 
-      return (std::regex_match(connection, REGEX_CONTINUE));
+      std::transform(expect.begin(), expect.end(),
+                     expect.begin(), ::tolower);
+      return (expect.find(CONTINUE) != std::string::npos);
     }
     //////////////////////////////////////////////////////////////////////////
 

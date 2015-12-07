@@ -13,15 +13,17 @@ occurs. Events that may be signalled are:
 | Socket Disconnected    | socket_disconnected_event     | A socket has disconnected. |
 | Message Sent           | message_sent_event            | A message has been sent on the connection. |
 
-Note **Request Received** is the only event that the application is required to
-provide an event handler for.
+
+Note: if an event handler is provided for **Request Received** then the
+internal `request_router()` is disabled.  
+The application must route all HTTP requests within the request handler that it provides.
 
 ## Request Received ##
 
 A Request Received event is signalled whenever the server receives a valid
 HTTP request from a client.  
-
-The application is required to provide an event handler for this event.
+If the application provides handler for this event then it must route the
+HTTP requests in the handler.
 
 ![HTTP Request Received](images/http_request_sequence_diagram.png)
 
@@ -52,14 +54,14 @@ E.g.:
     http_server.request_received_event(request_handler);
 
 Note: if an application does **NOT** call request_received_event to register a
-`RequestHandler` prior to calling `accept_connections`, the call to
-`accept_connections` will **throw std::logic_error**.
+`RequestHandler` prior to calling `accept_connections`, the http_server will use
+it's internal `request_router()` to route HTTP requests.
 
 ## Chunk Received ##
 
 Normally an application will receive the message body with a request. However, HTTP 1.1
 requests and responses may contain "chunked" bodies, see: [Chunked Transfer Encoding](Chunked_Encoding.md).
-According to RFC2616 an HTTP 1.1 server **MUST** be able to handle chunked requests.  
+According to rfc7230 an HTTP 1.1 server **MUST** be able to handle chunked requests.  
 
 A "chunked" HTTP request is not complete until the last chunk has been received.
 So to enable an application to receive chunks without registering a handler,
@@ -146,7 +148,7 @@ Large" response:
 
       // Reject the message if it's too big, otherwise continue
       via::http::tx_response response((request.content_length() > MAX_LENGTH) ?
-                           via::http::response_status::REQUEST_ENTITY_TOO_LARGE :
+                           via::http::response_status::PAYLOAD_TOO_LARGE :
                            via::http::response_status::CONTINUE);
       weak_ptr.lock()->send(response);
     }
@@ -156,17 +158,16 @@ Large" response:
 
 ## Invalid Request ##
 
-RFC2616 defines a set of appropriate responses for an HTTP server to send
-to an invalid HTTP request. Unfortunately, RFC2616 couldn't foresee all of
-the ways in which the protocol would be misused, see: [Security Guide](Server_Security.md).  
+rfc7230 defines a set of appropriate responses for an HTTP server to send
+to an invalid HTTP request.  
 
 An invalid request may be a sign that the HTTP server is subject a
-Denial of Service (DoS) attack.
+Denial of Service (DoS) attack, see: [Security Guide](Server_Security.md).  
 In which case the application may wish to be handle it in a different way
-to the standard RFC2616 response, e.g. by disconnecting the client's connection. 
+to the standard rfc7230 response, e.g. by disconnecting the client's connection. 
 
-To comply with RFC2616 the default server behaviour to an invalid request
-is to send the appropriate response from RFC2616.  
+To comply with rfc7230 the default server behaviour to an invalid request
+is to send the appropriate response from rfc7230.  
 To provide slightly more protection from DoS attacks, the server can be
 configured to disconnect immediately after sending a response to an
 invalid request, see below.

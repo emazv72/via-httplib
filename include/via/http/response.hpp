@@ -152,6 +152,10 @@ namespace via
       /// Since the class is inherited...
       virtual ~response_line() {}
 
+#ifdef _MSC_VER
+#pragma warning( push )
+#pragma warning( disable : 4706 ) // assignment within conditional expression
+#endif
       /// Parse the line as an HTTP response.
       /// @retval iter reference to an iterator to the start of the data.
       /// If valid it will refer to the next char of data to be read.
@@ -169,6 +173,9 @@ namespace via
         valid_ = (RESP_VALID == state_);
         return valid_;
       }
+#ifdef _MSC_VER
+#pragma warning( pop )
+#endif
 
       /// Accessor for the HTTP major version number.
       /// @return the major version number.
@@ -506,12 +513,13 @@ namespace via
         output += header_string_;
 
         // Ensure that it's got a content length header unless
-        // a tranfer encoding is being applied.
+        // a tranfer encoding is being applied or content is not permitted
         bool no_content_length(std::string::npos == header_string_.find
               (header_field::standard_name(header_field::id::CONTENT_LENGTH)));
         bool no_transfer_encoding(std::string::npos == header_string_.find
               (header_field::standard_name(header_field::id::TRANSFER_ENCODING)));
-        if (no_content_length && no_transfer_encoding)
+        if (no_content_length && no_transfer_encoding &&
+            response_status::content_permitted(status()))
           output += header_field::content_length(content_length);
         output += CRLF;
 

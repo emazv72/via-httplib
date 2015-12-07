@@ -59,9 +59,10 @@ namespace via
         ASIO::ip::tcp::resolver::iterator resolve_host
           (char const* host_name, char const* port_name) const
         {
+          ASIO_ERROR_CODE ignoredEc;
           ASIO::ip::tcp::resolver resolver(io_service_);
           ASIO::ip::tcp::resolver::query query(host_name, port_name);
-          return resolver.resolve(query);
+          return resolver.resolve(query, ignoredEc);
         }
 
         /// @fn verify_certificate
@@ -182,18 +183,20 @@ namespace via
 
         /// @fn shutdown
         /// The ssl tcp socket shutdown function.
-        /// Disconnects the socket.
-        /// Note: the handlers are required to shutdown SSL gracefully, see:
-        /// http://stackoverflow.com/questions/25587403/boost-asio-ssl-async-shutdown-always-finishes-with-an-error/25703699#25703699
-        /// @param shutdown_handler the handler for async_shutdown
-        /// @param close_handler the handler for async_write
-        void shutdown(ErrorHandler shutdown_handler, CommsHandler close_handler)
+        /// Disconnects the socket an notifies the write handler.
+        /// @param write_handler the handler for the call to async_shutdown.
+        void shutdown(CommsHandler write_handler)
         {
-          static const char buffer[] = "";
-          socket_.async_shutdown(shutdown_handler);
-          ASIO::async_write(socket_,
-                                   ASIO::const_buffers_1(&buffer[0], 1),
-                                   close_handler);
+          // Cancel any pending operations
+          ASIO_ERROR_CODE ignoredEc;
+          socket().cancel(ignoredEc);
+
+          // Call async_shutdown with the write_handler as a shutdown handler.
+          // This sends an async SSL close_notify message, shuts down the
+          // write side of the SSL stream and then waits (asynchronously) for
+          // the SSL close_notify response from the other side.
+          socket_.async_shutdown([write_handler]
+             (ASIO_ERROR_CODE const& ec){ write_handler(ec, 0); });
         }
 
         /// @fn close
@@ -219,16 +222,17 @@ namespace via
         /// it also determines whether the caller should perfrom an SSL
         /// shutdown.
         /// @param error the error_code
-        /// @retval ssl_shutdown - an ssl_disconnect should be performed
-        /// @return true if a disconnect error, false otherwise.
+        /// @retval ssl_shutdown - an SSL shutdown should be performed
+        /// @return true if the socket is disconnected, false otherwise.
         bool is_disconnect(ASIO_ERROR_CODE const& error,
                            bool& ssl_shutdown) NOEXCEPT
         {
           bool ssl_error(ASIO::error::get_ssl_category() == error.category());
           ssl_shutdown = ssl_error &&
-                         (SSL_R_SHORT_READ == ERR_GET_REASON(error.value()));
+               (SSL_R_SHORT_READ != ERR_GET_REASON(error.value())) &&
+               (SSL_R_PROTOCOL_IS_SHUTDOWN != ERR_GET_REASON(error.value()));
 
-          return ssl_error;
+          return ssl_error && !ssl_shutdown;
         }
 
         /// @fn socket

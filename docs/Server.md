@@ -20,7 +20,7 @@ The `http_server` class template parameters are:
 |---------------|---------------------|----------------------------------------|
 | SocketAdaptor |                     | `via::comms::tcp_adaptor` for HTTP or<br>`via::comms::ssl::ssl_tcp_adaptor` for HTTPS. |
 | Container     | `std::vector<char>` |`std::vector<char>` for data or<br>`std::string` for text |
-| use_strand    | false               | Use an `asio::strand` to manage multiple threads,<br>see: [boost asio strands](http://www.boost.org/doc/libs/1_57_0/doc/html/boost_asio/overview/core/strands.html) |
+| use_strand    | false               | Use an `asio::strand` to manage multiple threads,<br>see: [boost asio strands](http://www.boost.org/doc/libs/1_59_0/doc/html/boost_asio/overview/core/strands.html) |
  
 E.g. an HTTP server using std::string as a Container:
  
@@ -31,31 +31,20 @@ E.g. an HTTP server using std::string as a Container:
     /// A typedef for http_connection_type to make following code easier to understand.
     typedef http_server_type::http_connection_type http_connection;
 
-## Constructing and Configuring a server ##
+## Constructing a server ##
 
-The server is constructed with an `asio::io_service` and a `RequestHandler`, e.g.:
+The server is constructed with an `asio::io_service`, e.g.:
 
     boost::asio::io_service io_service;
-    http_server_type http_server(io_service, request_handler);
+    http_server_type http_server(io_service);
     
-Where `request_handler` is an instance of a `RequestHandler`, the event handler
-for incoming HTTP requests, e.g.:
+## Configuring the server ##
 
-    /// The handler for incoming HTTP requests.
-    /// Outputs the request and responds with: 204 No Content.
-    void request_handler(http_connection::weak_pointer weak_ptr,
-                         via::http::rx_request const& request,
-                         std::string const& body)
-    {
-      std::cout << "Rx request: " << request.to_string();
-      std::cout << request.headers().to_string();
-      std::cout << "Rx body: "    << body << std::endl;
+The can must be configured with a `RequestHandler`, see [Server Events](Server_Events.md), e.g.:
 
-      via::http::tx_response response(via::http::response_status::code::NO_CONTENT);
-      response.add_server_header();
-      response.add_date_header();
-      weak_ptr.lock()->send(response);
-    }
+    https_server.request_received_event(request_handler);
+    
+In which case the `request_handler` must route the HTTP requests.
     
 ### Server Events and Handlers ###
  
@@ -73,8 +62,7 @@ See [Server Events](Server_Events.md) for more details.
 | Socket Disconnected   | socket_disconnected_event     | A socket has disconnected. |
 | Message Sent          | message_sent_event            | A message has been sent on the connection. |
 
-Note **Request Received** is the only event that the application is required to
-provide an event handler for.
+Note: an event handler must be  provided for **Request Received**.
 
 ### Server Configuration ###
 
@@ -121,7 +109,7 @@ Other SSL/TLS options can be set via the ssl_context, e.g.:
        
     ssl_context.set_options(boost::asio::ssl::context_base::default_workarounds);
     
-See: [asio ssl context base](http://www.boost.org/doc/libs/1_57_0/doc/html/boost_asio/reference/ssl__context_base.html)
+See: [asio ssl context base](http://www.boost.org/doc/libs/1_59_0/doc/html/boost_asio/reference/ssl__context_base.html)
 for options.
 
 ## Accept Connections ##

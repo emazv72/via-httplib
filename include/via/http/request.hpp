@@ -147,6 +147,10 @@ namespace via
       /// Since the class is inherited...
       virtual ~request_line() {}
 
+#ifdef _MSC_VER
+#pragma warning( push )
+#pragma warning( disable : 4706 ) // assignment within conditional expression
+#endif
       /// Parse the line as an HTTP request.
       /// @retval iter reference to an iterator to the start of the data.
       /// If valid it will refer to the next char of data to be read.
@@ -164,7 +168,9 @@ namespace via
         valid_ = (REQ_VALID == state_);
         return valid_;
       }
-
+#ifdef _MSC_VER
+#pragma warning( pop )
+#endif
       /// Accessor for the HTTP minor version number.
       /// @return the minor version number.
       const std::string& method() const NOEXCEPT
@@ -694,10 +700,18 @@ namespace via
             // if a parsing error (not run out of data)
             if ((iter != end) || request_.fail())
             {
-              if (request_line::REQ_ERROR_URI_LENGTH == request_.state())
+              switch (request_.state())
+              {
+              case request_line::REQ_ERROR_METHOD_LENGTH:
+                response_code_ = response_status::code::NOT_IMPLEMENTED;
+                break;
+              case request_line::REQ_ERROR_URI_LENGTH:
                 response_code_ = response_status::code::REQUEST_URI_TOO_LONG;
-              else
+                break;
+              default:
                 response_code_ = response_status::code::BAD_REQUEST;
+              }
+
               clear();
               return RX_INVALID;
             }
@@ -749,7 +763,7 @@ namespace via
               // test the size
               if (content_length > static_cast<std::ptrdiff_t>(max_body_size_))
               {
-                response_code_ = response_status::code::REQUEST_ENTITY_TOO_LARGE;
+                response_code_ = response_status::code::PAYLOAD_TOO_LARGE;
                 clear();
                 return RX_INVALID;
               }
@@ -838,7 +852,7 @@ namespace via
                 // is within the maximum body size.
                 if ((body_.size() + chunk_.data().size()) > max_body_size_)
                 {
-                  response_code_ = response_status::code::REQUEST_ENTITY_TOO_LARGE;
+                  response_code_ = response_status::code::PAYLOAD_TOO_LARGE;
                   clear();
                   return RX_INVALID;
                 }

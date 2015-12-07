@@ -43,9 +43,10 @@ namespace via
       ASIO::ip::tcp::resolver::iterator resolve_host
           (char const* host_name, char const* port_name) const
       {
+        ASIO_ERROR_CODE ignoredEc;
         ASIO::ip::tcp::resolver resolver(io_service_);
         ASIO::ip::tcp::resolver::query query(host_name, port_name);
-        return resolver.resolve(query);
+        return resolver.resolve(query, ignoredEc);
       }
 
     protected:
@@ -131,16 +132,15 @@ namespace via
       /// @fn shutdown
       /// The tcp socket shutdown function.
       /// Disconnects the socket.
-      /// Note: the handlers are required to shutdown SSL gracefully, see:
-      // @param shutdown_handler the handler for async_shutdown
-      // @param close_handler the handler for async_write
-      void shutdown(ErrorHandler, // shutdown_handler,
-                    CommsHandler) // close_handler)
+      /// @param write_handler the handler to notify that the socket is
+      /// disconnected.
+      void shutdown(CommsHandler write_handler)
       {
-        ASIO_ERROR_CODE ignoredEc;
-        socket_.shutdown (ASIO::ip::tcp::socket::shutdown_both,
-                          ignoredEc);
-        close();
+        ASIO_ERROR_CODE ec;
+        socket_.shutdown (ASIO::ip::tcp::socket::shutdown_both, ec);
+
+        ec = ASIO_ERROR_CODE(ASIO::error::eof);
+        write_handler(ec, 0);
       }
 
       /// @fn close

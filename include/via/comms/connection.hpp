@@ -96,6 +96,7 @@ namespace via
       bool no_delay_;           ///< The tcp no delay status.
       bool keep_alive_;         ///< The tcp keep alive status.
       bool connected_;          ///< If the socket is connected.
+      bool disconnect_pending_; ///< Shutdown the socket after the next write.
 
       /// @fn weak_from_this
       /// Get a weak_pointer to this instance.
@@ -116,7 +117,14 @@ namespace via
           // local copies for lambdas
           weak_pointer weak_ptr(weak_from_this());
           std::shared_ptr<std::deque<Container> > tx_queue(tx_queue_);
+#ifdef _MSC_VER
+#pragma warning( push )
+#pragma warning( disable : 4127 ) // conditional expression is constant
+#endif
           if (use_strand)
+#ifdef _MSC_VER
+#pragma warning( pop )
+#endif
             SocketAdaptor::write(tx_buffers_,
                strand_.wrap([weak_ptr, tx_queue]
                             (ASIO_ERROR_CODE const& error,
@@ -140,7 +148,14 @@ namespace via
         weak_pointer weak_ptr(weak_from_this());
         std::shared_ptr<Container> rx_buffer(rx_buffer_);
 
+#ifdef _MSC_VER
+#pragma warning( push )
+#pragma warning( disable : 4127 ) // conditional expression is constant
+#endif
         if (use_strand)
+#ifdef _MSC_VER
+#pragma warning( pop )
+#endif
           SocketAdaptor::read(&(*rx_buffer_)[0], rx_buffer_->size(),
               strand_.wrap([weak_ptr, rx_buffer]
                            (ASIO_ERROR_CODE const& error,
@@ -259,7 +274,12 @@ namespace via
             pointer->signal_error(error);
           }
           else
-            pointer->write_handler(bytes_transferred);
+          {
+            if (pointer->disconnect_pending_)
+              pointer->shutdown();
+            else
+              pointer->write_handler(bytes_transferred);
+          }
         }
       }
 
@@ -353,32 +373,6 @@ namespace via
         }
       }
 
-      /// @fn shutdown_callback
-      /// A function called when an SSL socket adaptor attempts to disconnect.
-      /// @param ptr a weak pointer to the connection
-      /// @param error the boost asio error (if any).
-      static void shutdown_callback(weak_pointer ptr,
-                                    ASIO_ERROR_CODE const&) // error
-      {
-        shared_pointer pointer(ptr.lock());
-        if (pointer)
-          pointer->event_callback_(DISCONNECTED, ptr);
-      }
-
-      /// @fn close_callback
-      /// A function called when an SSL socket adaptor attempts to disconnect.
-      /// @param ptr a weak pointer to the connection
-      /// @param error the boost asio error (if any).
-      /// @param bytes_transferred the number of bytess(it's a write callback).
-      static void close_callback(weak_pointer ptr,
-                                 ASIO_ERROR_CODE const&, // error,
-                                 size_t)  // bytes_transferred)
-      {
-        shared_pointer pointer(ptr.lock());
-        if (pointer)
-          pointer->close();
-      }
-
       /// Constructor for server connections.
       /// The constructor is private to ensure that it instances of the class
       /// can only be created as shared pointers by calling the create
@@ -407,7 +401,8 @@ namespace via
         transmitting_(false),
         no_delay_(false),
         keep_alive_(false),
-        connected_(false)
+        connected_(false),
+        disconnect_pending_(false)
       {}
 
       /// Constructor for client connections.
@@ -616,17 +611,29 @@ namespace via
           { handshake_callback(weak_ptr, error); });
       }
 
+      /// @fn disconnect
+      /// Shutdown the socket after the last message has been sent.
+      void disconnect()
+      {
+        // If nothing is currently being sent
+        if (!transmitting_ && tx_queue_->empty())
+          shutdown();
+        else // shutdown the socekt in the write callback
+          disconnect_pending_ = true;
+      }
+
       /// @fn shutdown
-      /// Shutdown the underlying socket adaptor.
+      /// Shutdown the socket now.
       void shutdown()
       {
-        // Call shutdown with the callbacks
+        // local copies for the lambda
         weak_pointer weak_ptr(weak_from_this());
-        SocketAdaptor::shutdown([weak_ptr](ASIO_ERROR_CODE const& error)
-                                { shutdown_callback(weak_ptr, error); },
-                                [weak_ptr](ASIO_ERROR_CODE const& error,
-                                           int bytes)
-                                { close_callback(weak_ptr, error, bytes); });
+        std::shared_ptr<std::deque<Container>> tx_queue(tx_queue_);
+
+        // Call shutdown with the callback
+        SocketAdaptor::shutdown([weak_ptr, tx_queue]
+                        (ASIO_ERROR_CODE const& error, int bytes)
+                        { write_callback(weak_ptr, error, bytes, tx_queue); });
       }
 
       /// @fn close

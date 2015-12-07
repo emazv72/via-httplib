@@ -133,8 +133,9 @@ namespace via
     ////////////////////////////////////////////////////////////////////////
     // Variables
 
-    std::shared_ptr<server_type> server_;   ///< the communications server
-    connection_collection http_connections_;  ///< the communications channels
+    std::shared_ptr<server_type> server_;    ///< the communications server
+    connection_collection http_connections_; ///< the communications channels
+    bool                  shutting_down_;    ///< the server is shutting down
 
     // Request parser parameters
     bool           strict_crlf_;       ///< enforce strict parsing of CRLF
@@ -299,6 +300,10 @@ namespace via
         disconnected_handler_(iter->second);
 
       http_connections_.erase(iter);
+
+      // If the http_server is being shutdown and this was the last connection
+      if (shutting_down_ && http_connections_.empty())
+        server_->close();
     }
 
     /// Receive an event from the underlying comms connection.
@@ -344,7 +349,7 @@ namespace via
     }
 
     /// Receive an error from the underlying comms connection.
-    /// @param error the boost error_code.
+    /// @param error the asio error_code.
     // @param connection a weak ponter to the underlying comms connection.
     void error_handler(ASIO_ERROR_CODE const& error,
                        std::weak_ptr<connection_type>) // connection)
@@ -364,10 +369,11 @@ namespace via
     http_server& operator=(http_server) = delete;
 
     /// Constructor.
-    /// @param io_service a reference to the boost::asio::io_service.
+    /// @param io_service a reference to the asio::io_service.
     explicit http_server(ASIO::io_service& io_service) :
       server_(new server_type(io_service)),
       http_connections_(),
+      shutting_down_(false),
 
       // Set request parser parameters to default values
       strict_crlf_        (false),
@@ -405,6 +411,10 @@ namespace via
       server_->set_no_delay(true);
     }
 
+    /// Destructor, close the connections.
+    ~http_server()
+    { close(); }
+
     /// Start accepting connections on the given port and protocol.
     /// @pre http_server::request_received_event must have been called to register
     /// the request received callback function before this function.
@@ -413,11 +423,12 @@ namespace via
     /// @param port the port number to serve:
     /// default 80 for HTTP or 443 for HTTPS.
     /// @param ipv4_only whether an IPV4 only server is required, default false.
-    /// @return the boost error code, false if no error occured
+    /// @return the asio error code, false if no error occured
     ASIO_ERROR_CODE accept_connections
                       (unsigned short port = SocketAdaptor::DEFAULT_HTTP_PORT,
                        bool ipv4_only = false)
     {
+      // If a request handler's not been registered, use the request_router
       if (!http_request_handler_)
         throw std::logic_error
           ("via::http_server, a request_received_event is not registered");
@@ -636,6 +647,20 @@ namespace via
 
     ////////////////////////////////////////////////////////////////////////
     // other functions
+
+    /// Disconnect all of the outstanding http server connections to prepare
+    /// for closing the server.
+    void shutdown()
+    {
+      if (!http_connections_.empty())
+      {
+        shutting_down_ = true;
+        for (auto& elem : http_connections_)
+          elem.second->disconnect();
+      }
+      else
+        close();
+    }
 
     /// Close the http server and all of the connections associated with it.
     void close()
